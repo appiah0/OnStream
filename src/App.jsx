@@ -26,7 +26,7 @@ const DEFAULT_SETTINGS = {
 };
 
 const FONTS     = ['DM Sans','Arial','Georgia','Courier New','Trebuchet MS','Impact','Verdana','Times New Roman'];
-const QUALITIES = ['auto','1080p','720p','480p','360p'];
+const QUALITIES = ['auto','1080p','720p','480p','360p','240p','144p'];
 const RESIZES   = [
   { id:'contain', label:'Contain (letterbox)' },
   { id:'cover',   label:'Cover (crop edges)' },
@@ -248,8 +248,106 @@ function useSubtitleEngine(vttUrl, delay) {
   return currentCue;
 }
 
+// ─── Download Panel — 2-step: quality → subtitle ─────────────────────────────
+const DL_QUALITIES = ['1080p','720p','480p','360p','240p','144p'];
+const DL_SUBTITLE_LANGS = [
+  {code:'none', label:'No Subtitle'},
+  {code:'en',   label:'English'},
+  {code:'es',   label:'Spanish'},
+  {code:'fr',   label:'French'},
+  {code:'de',   label:'German'},
+  {code:'ar',   label:'Arabic'},
+  {code:'hi',   label:'Hindi'},
+  {code:'pt',   label:'Portuguese'},
+  {code:'it',   label:'Italian'},
+  {code:'ja',   label:'Japanese'},
+  {code:'ko',   label:'Korean'},
+  {code:'zh',   label:'Chinese'},
+  {code:'ru',   label:'Russian'},
+  {code:'tr',   label:'Turkish'},
+];
+
+function DownloadPanel({ item, isTV, season, episode, dlSrcs }) {
+  const [step,     setStep]    = useState('quality'); // 'quality' | 'subtitle'
+  const [selQual,  setSelQual] = useState(null);
+
+  const buildUrl = (quality, subLang) => {
+    // Build download URL with quality + optional subtitle param
+    const base = isTV
+      ? `https://dl.vidsrc.vip/tv/${item.id}/${season}/${episode}`
+      : `https://dl.vidsrc.vip/movie/${item.id}`;
+    let url = `${base}?quality=${quality}`;
+    if (subLang && subLang !== 'none') url += `&sub_lang=${subLang}`;
+    return url;
+  };
+
+  const handleQualityPick = (q) => {
+    setSelQual(q);
+    setStep('subtitle');
+  };
+
+  const handleSubPick = (subCode) => {
+    const url = buildUrl(selQual, subCode);
+    // Open in same window so browser download manager handles it
+    window.location.href = url;
+    // Reset for next use
+    setTimeout(() => { setStep('quality'); setSelQual(null); }, 800);
+  };
+
+  return (
+    <div style={{padding:'14px',flexShrink:0}}>
+      {step === 'quality' && (
+        <>
+          <div style={{color:'rgba(255,255,255,.5)',fontSize:12,marginBottom:14,lineHeight:1.55}}>
+            Step 1 of 2 — Choose video quality
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:9}}>
+            {DL_QUALITIES.map(q=>(
+              <button key={q} className="btn dl-row" onClick={()=>handleQualityPick(q)}>
+                <Ic.DL/>
+                <span style={{flex:1,fontWeight:700,fontSize:14}}>{q}</span>
+                <span style={{color:'rgba(255,255,255,.35)',fontSize:12}}>→</span>
+              </button>
+            ))}
+          </div>
+          <p style={{color:'rgba(255,255,255,.25)',fontSize:11,marginTop:12,lineHeight:1.5}}>
+            After choosing quality, you'll select subtitle language.
+          </p>
+        </>
+      )}
+
+      {step === 'subtitle' && (
+        <>
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:14}}>
+            <button className="btn" onClick={()=>setStep('quality')}
+              style={{background:'rgba(255,255,255,.08)',border:'none',color:'#fff',borderRadius:7,padding:'7px 10px',display:'flex'}}>
+              <Ic.Back/>
+            </button>
+            <div>
+              <div style={{fontWeight:700,fontSize:14}}>Step 2 of 2 — Subtitle Language</div>
+              <div style={{color:'rgba(255,255,255,.4)',fontSize:12}}>Quality: {selQual}</div>
+            </div>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:9}}>
+            {DL_SUBTITLE_LANGS.map(l=>(
+              <button key={l.code} className="btn dl-row" onClick={()=>handleSubPick(l.code)}>
+                <Ic.Sub/>
+                <span style={{flex:1,fontWeight:600,fontSize:13}}>{l.label}</span>
+                <span style={{color:'rgba(255,255,255,.35)',fontSize:12}}>⬇</span>
+              </button>
+            ))}
+          </div>
+          <p style={{color:'rgba(255,255,255,.25)',fontSize:11,marginTop:12,lineHeight:1.5}}>
+            On mobile: if download doesn't start, long-press the button → "Download link".
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── Player ───────────────────────────────────────────────────────────────────
-function Player({ item, onClose, onToggleFav, isFav, settings }) {
+function Player({ item, onClose, onToggleFav, isFav, settings, onWatched }) {
   const isTV    = getType(item)==='tv';
   const servers = SERVERS[isTV?'tv':'movie'];
   const dlSrcs  = DOWNLOAD[isTV?'tv':'movie'];
@@ -370,7 +468,7 @@ function Player({ item, onClose, onToggleFav, isFav, settings }) {
           allowFullScreen
           style={{width:'100%',height:'100%',border:'none',display:'block',background:'#000'}}
           title={getTitle(item)}
-          onLoad={()=>setIfrLoad(false)}
+          onLoad={()=>{ setIfrLoad(false); onWatched && onWatched(item); }}
           referrerPolicy="no-referrer"
         />
         {/* Subtitle overlay */}
@@ -462,7 +560,7 @@ function Player({ item, onClose, onToggleFav, isFav, settings }) {
 
           <SLabel><Ic.Clock/> Subtitle Delay</SLabel>
           <div style={{display:'flex',alignItems:'center',gap:12,background:'rgba(255,255,255,.05)',border:'1px solid rgba(255,255,255,.09)',borderRadius:10,padding:'11px 14px'}}>
-            <button className="btn" onClick={()=>setSubDelay(d=>+(d-0.5).toFixed(1))}
+            <button className="btn" onClick={()=>setSubDelay(d=>+(d-0.1).toFixed(1))}
               style={{background:'rgba(255,255,255,.1)',border:'none',color:'#fff',borderRadius:7,padding:'8px 16px',fontSize:18,fontWeight:800}}>−</button>
             <div style={{flex:1,textAlign:'center'}}>
               <div style={{fontSize:22,fontWeight:900,color:subDelay===0?'#fff':subDelay>0?'#4ade80':'#f87171'}}>
@@ -472,7 +570,7 @@ function Player({ item, onClose, onToggleFav, isFav, settings }) {
                 {subDelay===0?'No delay':subDelay>0?'Subs delayed':'Subs early'}
               </div>
             </div>
-            <button className="btn" onClick={()=>setSubDelay(d=>+(d+0.5).toFixed(1))}
+            <button className="btn" onClick={()=>setSubDelay(d=>+(d+0.1).toFixed(1))}
               style={{background:'rgba(255,255,255,.1)',border:'none',color:'#fff',borderRadius:7,padding:'8px 16px',fontSize:18,fontWeight:800}}>+</button>
           </div>
           <button className="btn" onClick={()=>setSubDelay(0)}
@@ -491,22 +589,9 @@ function Player({ item, onClose, onToggleFav, isFav, settings }) {
         </div>
       )}
 
-      {/* Download */}
+      {/* Download — 2-step: quality → subtitle language */}
       {panel==='download'&&(
-        <div style={{padding:'14px',flexShrink:0}}>
-          <p style={{color:'rgba(255,255,255,.5)',fontSize:12,marginBottom:14,lineHeight:1.55}}>
-            Mobile: <b style={{color:'#fff'}}>long-press → "Download"</b> to save to your device.
-          </p>
-          <div style={{display:'flex',flexDirection:'column',gap:9}}>
-            {(isTV?dlSrcs.map(s=>({...s,href:s.url(item.id,season,episode)})):dlSrcs.map(s=>({...s,href:s.url(item.id)}))).map((src,i)=>(
-              <a key={i} href={src.href} className="dl-row" target="_blank" rel="noopener noreferrer" download>
-                {src.isSub?<Ic.Sub/>:<Ic.DL/>}
-                <span style={{flex:1,fontWeight:600,fontSize:13}}>{src.name}</span>
-                <span style={{color:'rgba(255,255,255,.3)',fontSize:12}}>↗</span>
-              </a>
-            ))}
-          </div>
-        </div>
+        <DownloadPanel item={item} isTV={isTV} season={season} episode={episode} dlSrcs={dlSrcs}/>
       )}
 
       {/* Item info */}
@@ -795,7 +880,7 @@ function NoKey() {
   );
 }
 
-function HomePage({ onSelect, onToggleFav, favorites, hasKey }) {
+function HomePage({ onSelect, onToggleFav, favorites, hasKey, recentlyWatched }) {
   const [hero,setHero]=useState(null);
   const [data,setData]=useState({});
   const [loading,setLoad]=useState(true);
@@ -814,6 +899,9 @@ function HomePage({ onSelect, onToggleFav, favorites, hasKey }) {
     <div style={{animation:'fadeUp .4s ease'}}>
       <Hero item={hero} onSelect={onSelect} onToggleFav={onToggleFav} isFav={(favorites||[]).some(f=>f.id===hero?.id)}/>
       <div style={{paddingTop:16}}>
+        {recentlyWatched&&recentlyWatched.length>0&&(
+          <Row label="🕐 Continue Watching" items={recentlyWatched} loading={false} onSelect={onSelect} favorites={favorites}/>
+        )}
         <Row label="🔥 Trending"         items={data.trending}   loading={loading} onSelect={onSelect} favorites={favorites}/>
         <Row label="🎬 Popular Movies"   items={data.movies}     loading={loading} onSelect={onSelect} favorites={favorites}/>
         <Row label="📺 Popular TV Shows" items={data.shows}      loading={loading} onSelect={onSelect} favorites={favorites}/>
@@ -918,6 +1006,7 @@ export default function App() {
   const [playing,   setPlaying]  = useState(null);
   const [favorites, setFavs]     = useLocalStorage('onstream_favs_v3', []);
   const [settings,  setSettings] = useLocalStorage('onstream_settings_v1', DEFAULT_SETTINGS);
+  const [recentlyWatched, setRecentlyWatched] = useLocalStorage('onstream_recent_v1', []);
   const [toast,     setToast]    = useState('');
   const [searchQ,   setSearchQ]  = useState('');
   const [searchRes, setSearchR]  = useState([]);
@@ -948,6 +1037,12 @@ export default function App() {
   },[searchQ,hasKey]);
 
   const toast_     = useCallback(msg=>setToast(msg),[]);
+  const handleWatched = useCallback((item) => {
+    setRecentlyWatched(prev => {
+      const filtered = prev.filter(r => r.id !== item.id);
+      return [{...item, watchedAt: Date.now()}, ...filtered].slice(0, 30);
+    });
+  }, [setRecentlyWatched]);
   const toggleFav  = useCallback(item=>{
     setFavs(prev=>{
       const has=prev.some(f=>f.id===item.id);
@@ -969,7 +1064,7 @@ export default function App() {
   return (
     <div style={{background:'#0a0a0f',minHeight:'100dvh',color:'#fff',fontFamily:"'DM Sans',sans-serif",display:'flex',flexDirection:'column'}}>
 
-      {playing&&<Player item={playing} onClose={()=>setPlaying(null)} onToggleFav={toggleFav} isFav={favorites.some(f=>f.id===playing.id)} settings={settings}/>}
+      {playing&&<Player item={playing} onClose={()=>setPlaying(null)} onToggleFav={toggleFav} isFav={favorites.some(f=>f.id===playing.id)} settings={settings} onWatched={handleWatched}/>}
 
       <Toast msg={toast} clear={()=>setToast('')}/>
 
@@ -1021,7 +1116,7 @@ export default function App() {
           </div>
         )}
 
-        {!isSearching&&tab==='home'    &&<HomePage     onSelect={handleSelect} onToggleFav={toggleFav} favorites={favorites} hasKey={hasKey}/>}
+        {!isSearching&&tab==='home'    &&<HomePage     onSelect={handleSelect} onToggleFav={toggleFav} favorites={favorites} hasKey={hasKey} recentlyWatched={recentlyWatched}/>}
         {!isSearching&&tab==='movies'  &&<MoviesPage   onSelect={handleSelect} onToggleFav={toggleFav} favorites={favorites} hasKey={hasKey}/>}
         {!isSearching&&tab==='shows'   &&<ShowsPage    onSelect={handleSelect} onToggleFav={toggleFav} favorites={favorites} hasKey={hasKey}/>}
         {!isSearching&&tab==='mylist'  &&<MyListPage   onSelect={handleSelect} onToggleFav={toggleFav} favorites={favorites}/>}
